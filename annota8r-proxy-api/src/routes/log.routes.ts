@@ -1,31 +1,40 @@
 // src/routes/log.routes.ts
 import { Hono } from 'hono';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 import { SecurityLogService } from '../services/log.service.js';
 import { adminAuthMiddleware, webAuthMiddleware } from '../middleware/auth.middleware.js';
 import { SecurityLogType } from '../types/log.types.js';
-import { Admins, WebUsers } from '../config/mongo.js';
+import type { Admin, WebUser } from '../types/auth.types.js';
 
-const app = new Hono();
+// Define context variable types
+type Variables = {
+  adminUser: Admin;
+  user: WebUser;
+};
 
-// User endpoint to log security events
-app.post('/security-logs/event', webAuthMiddleware, async (c) => {
+const app = new Hono<{ Variables: Variables }>();
+
+// Schema Validation
+const securityEventSchema = z.object({
+  logType: z.nativeEnum(SecurityLogType),
+  keyPressed: z.string().optional(),
+  additionalInfo: z.string().optional()
+});
+
+// Log security event (from client)
+app.post('/events', webAuthMiddleware, zValidator('json', securityEventSchema), async (c) => {
   try {
     const body = await c.req.json();
     const { logType, keyPressed, additionalInfo } = body;
-
-    // Validate the log type
-    if (!Object.values(SecurityLogType).includes(logType)) {
-      return c.json({ error: 'Invalid log type' }, 400);
-    }
 
     // Get user info from request
     const userAgent = c.req.header('user-agent') || 'unknown';
     const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
     const path = c.req.path;
 
-    // Get user ID from auth token
-    const token = c.req.header('Authorization')?.replace('Bearer ', '');
-    const user = await WebUsers.findOne({ accessToken: token });
+    // Get user from context
+    const user = c.get('user');
     
     if (!user) {
       return c.json({ error: 'User not found' }, 401);
@@ -48,18 +57,15 @@ app.post('/security-logs/event', webAuthMiddleware, async (c) => {
       return c.json({ error: 'Failed to log security event' }, 500);
     }
 
-    return c.json({ message: 'Security event logged successfully' });
+    return c.json({ success: true, message: 'Security event logged successfully' });
   } catch (error) {
     console.error('Error logging security event:', error);
     return c.json({ error: 'Failed to process security event' }, 500);
   }
 });
 
-// Protect all routes with admin authentication
-app.use('/*', adminAuthMiddleware);
-
-// Get security logs with filtering
-app.get('/security-logs', async (c) => {
+// Get security logs with filtering (admin only)
+app.get('/', adminAuthMiddleware, async (c) => {
   try {
     const {
       userId,
@@ -89,20 +95,8 @@ app.get('/security-logs', async (c) => {
   }
 });
 
-// Get user security summary
-app.get('/security-logs/user/:userId', async (c) => {
-  try {
-    const userId = c.req.param('userId');
-    const summary = await SecurityLogService.getUserSecuritySummary(userId);
-    return c.json(summary);
-  } catch (error) {
-    console.error('Error fetching user security summary:', error);
-    return c.json({ error: 'Failed to fetch user security summary' }, 500);
-  }
-});
-
-// Get security statistics
-app.get('/security-logs/stats', async (c) => {
+// Get security statistics (admin only)
+app.get('/stats', adminAuthMiddleware, async (c) => {
   try {
     const timeframe = parseInt(c.req.query('timeframe') || '24');
     const stats = await SecurityLogService.getSecurityStats(timeframe);
@@ -113,15 +107,26 @@ app.get('/security-logs/stats', async (c) => {
   }
 });
 
-// Get admin logs
-app.get('/security-logs/admin/:username', async (c) => {
+// Get user security summary (admin only)
+app.get('/users/:userId', adminAuthMiddleware, async (c) => {
   try {
-    const username = c.req.param('username');
+    const userId = c.req.param('userId');
+    const summary = await SecurityLogService.getUserSecuritySummary(userId);
+    return c.json(summary);
+  } catch (error) {
+    console.error('Error fetching user security summary:', error);
+    return c.json({ error: 'Failed to fetch user security summary' }, 500);
+  }
+});
+
+// Get admin logs (super admin only)
+app.get('/admins/:adminId', adminAuthMiddleware, async (c) => {
+  try {
+    const adminId = c.req.param('adminId');
     const { page = "1", limit = "20" } = c.req.query();
 
     // Verify super admin status using the token
-    const token = c.req.header('Authorization')?.replace('Bearer ', '');
-    const requestingAdmin = await Admins.findOne({ accessToken: token });
+    const requestingAdmin = c.get('adminUser');
 
     if (!requestingAdmin?.isSuperAdmin) {
       return c.json({ error: 'Only super admins can view admin logs' }, 403);
@@ -129,7 +134,7 @@ app.get('/security-logs/admin/:username', async (c) => {
 
     // Get admin's logs
     const logs = await SecurityLogService.getSecurityLogs({
-      userId: username,
+      userId: adminId,
       page: parseInt(page),
       limit: parseInt(limit),
       // Add filter for admin-specific log types
@@ -147,15 +152,7 @@ app.get('/security-logs/admin/:username', async (c) => {
       ]
     });
 
-    return c.json({
-      logs: logs.logs,
-      pagination: {
-        total: logs.pagination.total,
-        page: parseInt(page),
-        totalPages: logs.pagination.totalPages,
-        limit: parseInt(limit)
-      }
-    });
+    return c.json(logs);
   } catch (error) {
     console.error('Error fetching admin logs:', error);
     return c.json({ error: 'Failed to fetch admin logs' }, 500);

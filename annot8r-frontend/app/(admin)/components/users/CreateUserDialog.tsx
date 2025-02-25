@@ -1,135 +1,160 @@
-// components/users/CreateUserDialog.tsx
+// app/(admin)/components/users/CreateUserDialog.tsx
 import { useState } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { toast } from "sonner";
-import { fetchWithAuth } from "@/lib/apis/config";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Loader2 } from "lucide-react";
+import { createUser } from "@/lib/apis/users";
+
+const formSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  isOfficeUser: z.boolean().default(false),
+});
 
 interface CreateUserDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }
 
 export function CreateUserDialog({
-  isOpen,
-  onClose,
+  open,
+  onOpenChange,
   onSuccess,
 }: CreateUserDialogProps) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [isOfficeUser, setIsOfficeUser] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleCreate = async () => {
-    if (!username || !password) {
-      toast.error("Please fill in all fields");
-      return;
-    }
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+      isOfficeUser: false,
+    },
+  });
 
-    if (password.length < 8) {
-      toast.error("Password must be at least 8 characters long");
-      return;
-    }
-
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       setIsSubmitting(true);
-      await fetchWithAuth("/auth/users", {
-        method: "POST",
-        body: JSON.stringify({ 
-          username, 
-          password,
-          isOfficeUser 
-        }),
-      });
-
+      await createUser(values);
       toast.success("User created successfully");
+      form.reset();
       onSuccess();
-      handleClose();
     } catch (error) {
       console.error("Error creating user:", error);
       toast.error("Failed to create user");
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleClose = () => {
-    setUsername("");
-    setPassword("");
-    setIsOfficeUser(false);
-    onClose();
-  };
+  }
 
   return (
-    <AlertDialog open={isOpen} onOpenChange={handleClose}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Create New User</AlertDialogTitle>
-          <AlertDialogDescription>
-            Enter details for the new user.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Create New User</DialogTitle>
+          <DialogDescription>
+            Add a new user to the system. Set their username and initial
+            password.
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="grid gap-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="username">Username</Label>
-            <Input
-              id="username"
-              placeholder="Enter username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="username"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Username</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="Enter password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl>
+                    <Input type="password" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-            <p className="text-xs text-muted-foreground">
-              Must be at least 8 characters long
-            </p>
-          </div>
 
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="office-user"
-              checked={isOfficeUser}
-              onCheckedChange={setIsOfficeUser}
+            <FormField
+              control={form.control}
+              name="isOfficeUser"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                  <div className="space-y-0.5">
+                    <FormLabel>Office User</FormLabel>
+                    <FormDescription>
+                      Office users have access to special features
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
             />
-            <Label htmlFor="office-user">Office User</Label>
-          </div>
-        </div>
 
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleClose} disabled={isSubmitting}>
-            Cancel
-          </AlertDialogCancel>
-          <AlertDialogAction
-            onClick={handleCreate}
-            disabled={isSubmitting || !username || !password}
-            className="bg-primary hover:bg-primary/90"
-          >
-            {isSubmitting ? "Creating..." : "Create User"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create User"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
   );
 }

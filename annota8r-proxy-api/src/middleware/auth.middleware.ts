@@ -28,6 +28,8 @@ export async function webAuthMiddleware(c: any, next: Next) {
     if (!isValid) {
       return c.json({ error: 'Unauthorized - Invalid token or device mismatch' }, 401);
     }
+
+    c.set("user", webUser);
   } else {
     // Check if it's an admin token
     const admin = await Admins.findOne({ accessToken: token });
@@ -39,6 +41,8 @@ export async function webAuthMiddleware(c: any, next: Next) {
     if (!admin.tokenExpiry || new Date() > admin.tokenExpiry) {
       return c.json({ error: 'Unauthorized - Token expired' }, 401);
     }
+
+    c.set("adminUser", admin);
   }
   
   await next();
@@ -54,6 +58,8 @@ export async function adminAuthMiddleware(c: any, next: Next) {
   if (!admin || !admin.tokenExpiry || new Date() > admin.tokenExpiry) {
     return c.json({ error: 'Unauthorized - Invalid or expired token' }, 401);
   }
+
+  c.set("adminUser", admin);
 
   await next();
 }

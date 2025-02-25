@@ -1,147 +1,416 @@
 // src/routes/project.routes.ts
-import { Hono } from 'hono'
-import { S3Service } from '../services/s3.service.js'
-import { adminAuthMiddleware, webAuthMiddleware } from '../middleware/auth.middleware.js'
-import { SecurityLogService } from '../services/log.service.js'
-import { SecurityLogType } from '../types/log.types.js'
-import { Admins } from '../config/mongo.js'
+import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
+import { adminAuthMiddleware, webAuthMiddleware } from "../middleware/auth.middleware.js";
+import { ProjectService } from "../services/project.service.js";
+import { SecurityLogService } from "../services/log.service.js";
+import { SecurityLogType } from "../types/log.types.js";
+import { ProjectStatus, AnnotationFormat } from "../types/project.types.js";
+import type { Admin, WebUser } from "../types/auth.types.js";
+import { Projects } from "../config/mongo.js";
+import { ObjectId } from "mongodb";
 
-const app = new Hono()
+type Variables = {
+  adminUser: Admin;
+  user: WebUser;
+};
 
-app.use('/*', webAuthMiddleware)  // Add this to protect all routes
+const app = new Hono<{ Variables: Variables }>();
 
-app.get('/projects/:userId', async (c) => {
-  const userId = c.req.param('userId')
-  
-  try {
-    // Get all projects first with their submission status
-    const projects = await S3Service.listProjects(userId)
-    
-    // For each project, get the image stats
-    const projectsWithStats = await Promise.all(
-      projects
-        .filter((project): project is NonNullable<typeof project> => project !== null)
-        .map(async (project) => {
-          const images = await S3Service.listImages(
-            userId,
-            project.id!,
-            new URL(c.req.url).origin,
-            undefined,
-            1
-          )
+// Schema Validation
+const createProjectSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().optional(),
+  settings: z.object({
+    allowCustomClasses: z.boolean().default(false),
+    requireReview: z.boolean().default(true),
+    autoDistribute: z.boolean().default(true),
+    modelFormat: z.nativeEnum(AnnotationFormat),
+  }),
+  classes: z.array(z.string()).min(1),
+  totalImages: z.number().int().positive(),
+});
 
-          // Log the metadata for debugging
-          console.log(`Returning project ${project.id} with submission status:`, {
-            isSubmitted: project.isSubmitted,
-            submittedAt: project.submittedAt
-          });
-          
-          return {
-            ...project, // This will include isSubmitted and submittedAt
-            totalImages: images.pagination.total,
-            annotatedImages: images.pagination.annotatedTotal,
-            remainingImages: images.pagination.annotationRemaining
-          }
-        })
-    )
-    
-    return c.json({ projects: projectsWithStats })
-  } catch (error) {
-    console.error('Error fetching projects:', error)
-    return c.json({ error: 'Failed to fetch projects' }, 500)
-  }
-})
-
-app.get('/projects/:userId/:projectId/images', async (c) => {
-  const { userId, projectId } = c.req.param()
-  const { cursor, limit } = c.req.query()
-  const baseUrl = new URL(c.req.url).origin
-  
-  try {
-    // Get project metadata first
-    const metadata = await S3Service.getProjectMetadata(userId, projectId);
-    
-    // Parse the limit parameter
-    const parsedLimit = limit ? parseInt(limit, 10) : undefined;
-    
-    const response = await S3Service.listImages(
-      userId, 
-      projectId, 
-      baseUrl,
-      cursor,
-      parsedLimit
-    )
-
-    // Include submission status in response
-    return c.json({
-      ...response,
-      isSubmitted: metadata.isSubmitted || false,
-      submittedAt: metadata.submittedAt
+const updateProjectSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().optional(),
+  settings: z
+    .object({
+      allowCustomClasses: z.boolean(),
+      requireReview: z.boolean(),
+      autoDistribute: z.boolean(),
+      modelFormat: z.nativeEnum(AnnotationFormat),
     })
-  } catch (error) {
-    console.error('Error fetching images:', error)
-    return c.json({ error: 'Failed to fetch images' }, 500)
-  }
-})
+    .optional(),
+  classes: z.array(z.string()).min(1).optional(),
+  status: z.nativeEnum(ProjectStatus).optional(),
+});
 
-app.post('/projects/:userId/:projectId/submit', async (c) => {
-  const { userId, projectId } = c.req.param();
-  
+const memberAssignmentSchema = z.object({
+  userId: z.string(),
+  allocationPercentage: z.number().min(0).max(100),
+});
+
+const classesSchema = z.object({
+  classes: z.array(z.string())
+});
+
+const submitProjectSchema = z.object({
+  projectId: z.string()
+});
+
+const unmarkProjectSchema = z.object({
+  projectId: z.string()
+});
+
+// List all projects (admin only)
+app.get('/', adminAuthMiddleware, async (c) => {
   try {
-    const success = await S3Service.submitProject(userId, projectId);
+    const projects = await Projects.find({}).toArray();
+    
+    const formattedProjects = projects.map(project => ({
+      id: project._id.toString(),
+      name: project.name,
+      description: project.description,
+      status: project.status,
+      createdAt: project.createdAt,
+      createdBy: project.createdBy,
+      settings: project.settings,
+      classes: project.classes,
+      totalImages: project.totalImages,
+      stats: project.stats,
+      members: project.members || []
+    }));
+
+    return c.json({ 
+      success: true, 
+      projects: formattedProjects 
+    });
+  } catch (error) {
+    console.error("Error fetching projects:", error);
+    return c.json({ 
+      success: false, 
+      error: "Failed to fetch projects" 
+    }, 500);
+  }
+});
+
+// Create new project
+app.post('/', adminAuthMiddleware, zValidator("json", createProjectSchema), async (c) => {
+  try {
+    const adminUser = c.get("adminUser");
+    const projectData = await c.req.json();
+
+    const projectId = await ProjectService.createProject(
+      adminUser.username,
+      projectData
+    );
+
+    await SecurityLogService.logSecurityEvent(
+      adminUser.username,
+      SecurityLogType.PROJECT_CREATED,
+      {
+        userAgent: c.req.header("user-agent") || "unknown",
+        ip: c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "unknown",
+        path: c.req.path,
+        additionalInfo: `Created project: ${projectData.name}`,
+      }
+    );
+
+    return c.json({ success: true, projectId });
+  } catch (error) {
+    console.error("Error creating project:", error);
+    return c.json({ success: false, error: "Failed to create project" }, 500);
+  }
+});
+
+// Get single project
+app.get('/:projectId', adminAuthMiddleware, async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    
+    // Use a regular expression to match the project ID - this avoids type issues
+    const projects = await Projects.find({}).toArray();
+    const project = projects.find(p => p._id.toString() === projectId);
+    
+    if (!project) {
+      return c.json({ 
+        success: false, 
+        error: "Project not found" 
+      }, 404);
+    }
+
+    // Format the response
+    const formattedProject = {
+      id: project._id.toString(),
+      name: project.name,
+      description: project.description,
+      status: project.status,
+      createdAt: project.createdAt,
+      createdBy: project.createdBy,
+      settings: project.settings,
+      classes: project.classes,
+      totalImages: project.totalImages,
+      stats: project.stats,
+      members: project.members || []
+    };
+
+    return c.json({ 
+      success: true, 
+      project: formattedProject
+    });
+  } catch (error) {
+    console.error("Error fetching project:", error);
+    return c.json({ 
+      success: false, 
+      error: "Failed to fetch project" 
+    }, 500);
+  }
+});
+
+// Update project
+app.put('/:projectId', adminAuthMiddleware, zValidator("json", updateProjectSchema), async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const updates = await c.req.json();
+
+    const success = await ProjectService.updateProject(projectId, updates);
     if (!success) {
-      return c.json({ error: 'Failed to submit project' }, 500);
+      return c.json({ success: false, error: "Project not found" }, 404);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Error updating project:", error);
+    return c.json({ success: false, error: "Failed to update project" }, 500);
+  }
+});
+
+// Get project stats
+app.get('/:projectId/stats', adminAuthMiddleware, async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const stats = await ProjectService.getProjectStats(projectId);
+    return c.json({ success: true, stats });
+  } catch (error) {
+    console.error("Error getting project stats:", error);
+    return c.json(
+      { success: false, error: "Failed to get project stats" },
+      500
+    );
+  }
+});
+
+// Submit project for review
+app.post('/:projectId/submit', webAuthMiddleware, async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const user = c.get("user");
+    
+    // Verify user has access to this project
+    const hasAccess = await ProjectService.userHasAccess(user.username, projectId);
+    if (!hasAccess) {
+      return c.json({ success: false, error: "Not authorized to access this project" }, 403);
     }
     
-    // Log the submission
+    // Submit project for review
+    const success = await ProjectService.submitProject(projectId, user.username);
+    if (!success) {
+      return c.json({ success: false, error: "Failed to submit project" }, 500);
+    }
+    
     await SecurityLogService.logSecurityEvent(
-      userId,
+      user.username,
       SecurityLogType.PROJECT_SUBMITTED,
       {
-        userAgent: c.req.header('user-agent') || 'unknown',
-        ip: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown',
+        userAgent: c.req.header("user-agent") || "unknown",
+        ip: c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "unknown",
         path: c.req.path,
-        additionalInfo: `Project: ${projectId}`
+        additionalInfo: `Submitted project: ${projectId}`
       }
     );
-
+    
     return c.json({ success: true });
   } catch (error) {
-    console.error('Error submitting project:', error);
-    return c.json({ error: 'Failed to submit project' }, 500);
+    console.error("Error submitting project:", error);
+    return c.json({ success: false, error: "Failed to submit project" }, 500);
   }
 });
 
-// Add to auth.routes.ts
-app.post('/auth/users/:username/projects/:projectId/unsubmit', adminAuthMiddleware, async (c) => {
-  const { username, projectId } = c.req.param();
-  
+// Unmark project submission (admin only)
+app.post('/:projectId/unmark', adminAuthMiddleware, async (c) => {
   try {
-    const success = await S3Service.unsubmitProject(username, projectId);
+    const projectId = c.req.param("projectId");
+    const adminUser = c.get("adminUser");
+    
+    // Unmark project submission
+    const success = await ProjectService.unmarkSubmission(projectId);
     if (!success) {
-      return c.json({ error: 'Failed to update project status' }, 500);
+      return c.json({ success: false, error: "Failed to unmark project" }, 500);
     }
     
-    // Log the action
-    const adminToken = c.req.header('Authorization')?.replace('Bearer ', '');
-    const admin = await Admins.findOne({ accessToken: adminToken });
-    
     await SecurityLogService.logSecurityEvent(
-      username,
+      adminUser.username,
       SecurityLogType.PROJECT_UNMARKED,
       {
-        userAgent: c.req.header('user-agent') || 'unknown',
-        ip: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown',
+        userAgent: c.req.header("user-agent") || "unknown",
+        ip: c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "unknown",
         path: c.req.path,
-        additionalInfo: `Project: ${projectId}, Unmarked by: ${admin?.username}`
+        additionalInfo: `Unmarked project submission: ${projectId}`
       }
     );
-
+    
     return c.json({ success: true });
   } catch (error) {
-    console.error('Error updating project status:', error);
-    return c.json({ error: 'Failed to update project status' }, 500);
+    console.error("Error unmarking project:", error);
+    return c.json({ success: false, error: "Failed to unmark project" }, 500);
   }
 });
 
-export { app as projectRoutes }
+// Get project classes
+app.get('/:projectId/classes', webAuthMiddleware, async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const classes = await ProjectService.getClasses(projectId);
+    
+    return c.json({ success: true, classes });
+  } catch (error) {
+    console.error("Error getting classes:", error);
+    return c.json({ success: false, error: "Failed to get classes" }, 500);
+  }
+});
+
+// Update project classes
+app.put('/:projectId/classes', adminAuthMiddleware, zValidator("json", classesSchema), async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const { classes } = await c.req.json();
+
+    const success = await ProjectService.updateClasses(projectId, classes);
+    if (!success) {
+      return c.json({ success: false, error: "Failed to update classes" }, 500);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Error updating classes:", error);
+    return c.json({ success: false, error: "Failed to update classes" }, 500);
+  }
+});
+
+// List project members
+app.get('/:projectId/members', adminAuthMiddleware, async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    
+    const project = await Projects.findOne({
+      _id: new ObjectId(projectId) as unknown as string,
+    });
+    
+    if (!project) {
+      return c.json({ success: false, error: "Project not found" }, 404);
+    }
+    
+    return c.json({ 
+      success: true, 
+      members: project.members || [] 
+    });
+  } catch (error) {
+    console.error("Error fetching project members:", error);
+    return c.json({ success: false, error: "Failed to fetch members" }, 500);
+  }
+});
+
+// Add project member
+app.post('/:projectId/members', adminAuthMiddleware, zValidator("json", memberAssignmentSchema), async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const { userId, allocationPercentage } = await c.req.json();
+
+    const success = await ProjectService.addProjectMember(
+      projectId,
+      userId,
+      allocationPercentage
+    );
+
+    if (!success) {
+      return c.json({ success: false, error: "Failed to add member" }, 400);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Error adding project member:", error);
+    return c.json({ success: false, error: "Failed to add member" }, 500);
+  }
+});
+
+// Update member allocation
+app.put('/:projectId/members/:userId', adminAuthMiddleware, zValidator("json", memberAssignmentSchema), async (c) => {
+  try {
+    const { projectId, userId } = c.req.param();
+    const { allocationPercentage } = await c.req.json();
+
+    const success = await ProjectService.updateMemberAllocation(
+      projectId,
+      userId,
+      allocationPercentage
+    );
+
+    if (!success) {
+      return c.json(
+        { success: false, error: "Failed to update allocation" },
+        400
+      );
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Error updating member allocation:", error);
+    return c.json(
+      { success: false, error: "Failed to update allocation" },
+      500
+    );
+  }
+});
+
+// Remove project member
+app.delete('/:projectId/members/:userId', adminAuthMiddleware, async (c) => {
+  try {
+    const { projectId, userId } = c.req.param();
+
+    const success = await ProjectService.removeMember(projectId, userId);
+    if (!success) {
+      return c.json({ success: false, error: "Failed to remove member" }, 400);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Error removing project member:", error);
+    return c.json({ success: false, error: "Failed to remove member" }, 500);
+  }
+});
+
+// Get assignments for a project
+app.get('/:projectId/assignments', webAuthMiddleware, async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const user = c.get("user");
+    const page = parseInt(c.req.query("page") || "1");
+    const limit = parseInt(c.req.query("limit") || "20");
+
+    const assignments = await ProjectService.getMemberAssignments(
+      projectId,
+      user.username,
+      page,
+      limit
+    );
+
+    return c.json({ success: true, ...assignments });
+  } catch (error) {
+    console.error("Error getting assignments:", error);
+    return c.json({ success: false, error: "Failed to get assignments" }, 500);
+  }
+});
+
+export { app as projectRoutes };

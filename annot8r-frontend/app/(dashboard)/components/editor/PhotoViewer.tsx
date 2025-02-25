@@ -33,6 +33,7 @@ import { StatusInfo } from "./StatusInfo";
 import { HelpDialog } from "./HelpDialog";
 import { motion } from "framer-motion";
 import AnnotationListPanel from "./LabelSidebar";
+import { fetchWithAuth } from "@/lib/apis/config";
 
 export function PhotoViewer({
   currentImageId,
@@ -48,6 +49,8 @@ export function PhotoViewer({
   hasNext,
   currentIndex,
   totalImages,
+  isAdmin = false,
+  projectId
 }: PhotoViewerProps): React.ReactElement {
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -976,6 +979,35 @@ export function PhotoViewer({
     return () => window.removeEventListener("keydown", handleEscape);
   }, [editorState.isDrawing, handleGoBack]);
 
+  const handleRequestChanges = useCallback(async () => {
+    if (!isAdmin) return;
+    
+    // Use a simple prompt for feedback
+    const feedback = window.prompt("Please provide feedback for the annotator:");
+    if (feedback === null) return; // User cancelled
+    
+    try {
+      // Call API to request changes
+      await fetchWithAuth(`/projects/${projectId}/images/${currentImageId}/review`, {
+        method: 'POST',
+        body: JSON.stringify({
+          status: 'changes_requested',
+          feedback
+        })
+      });
+      
+      toast.success("Change request sent to annotator");
+      
+      // Move to next image if available
+      if (hasNext) {
+        onNext();
+      }
+    } catch (error) {
+      toast.error("Failed to submit change request");
+      console.error(error);
+    }
+  }, [isAdmin, projectId, currentImageId, hasNext, onNext]);
+
   // Render
   return (
     <div className="relative w-full h-screen flex items-center justify-center bg-white overflow-hidden">
@@ -1092,6 +1124,8 @@ export function PhotoViewer({
         onDeleteAll={handleDeleteAll}
         onSave={handleSave}
         isDrawing={editorState.isDrawing}
+        isAdmin={isAdmin}
+        onRequestChanges={isAdmin ? handleRequestChanges : undefined}
       />
 
       {/* Status Information */}

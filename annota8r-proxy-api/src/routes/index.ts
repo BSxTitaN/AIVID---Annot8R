@@ -1,19 +1,27 @@
+// src/routes/index.ts
 import { Hono } from 'hono'
+import { authRoutes } from './auth.routes.js'
 import { projectRoutes } from './project.routes.js'
 import { imageRoutes } from './image.routes.js'
-import { proxyRoutes } from './proxy.routes.js'
 import { annotationRoutes } from './annotation.routes.js'
 import { logRoutes } from './log.routes.js'
-import { authRoutes } from './auth.routes.js'
+import { userRoutes } from './user.routes.js'
+import { adminRoutes } from './admin.routes.js'
 
 const app = new Hono()
 
-app.route('/api', authRoutes)
+// API version prefix for all routes
+const API_PREFIX = '/api/v1'
 
-app.route('/api', projectRoutes)
-app.route('/api', imageRoutes)
-app.route('/api', proxyRoutes)
-app.route('/api', annotationRoutes)
-app.route('/api', logRoutes)
+// Mount all route groups under the API prefix
+app.route(`${API_PREFIX}/auth`, authRoutes)
+app.route(`${API_PREFIX}/users`, userRoutes)
+app.route(`${API_PREFIX}/admins`, adminRoutes)
+app.route(`${API_PREFIX}/projects`, projectRoutes)
+app.route(`${API_PREFIX}/images`, imageRoutes)
+app.route(`${API_PREFIX}/logs`, logRoutes)
+
+// Routes that don't fit the pattern above
+app.route(API_PREFIX, annotationRoutes) // These routes include project-related annotation paths
 
 export { app as routes }

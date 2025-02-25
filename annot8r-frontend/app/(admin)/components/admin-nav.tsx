@@ -3,7 +3,7 @@
 import { UserInfo } from "@/lib/types/auth";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LucideShieldAlert, Users2, ScrollText } from "lucide-react";
+import { LucideShieldAlert, Users2, ScrollText, Folder } from "lucide-react";
 import {
   NavigationMenu,
   NavigationMenuItem,
@@ -41,6 +41,11 @@ export function AdminNavbar({ user }: AdminNavbarProps) {
       name: "Users",
       href: "/admin/users",
       icon: Users2,
+    },
+    {
+      name: "Projects",
+      href: "/admin/projects",
+      icon: Folder,
     },
     ...(isSuperAdmin
       ? [

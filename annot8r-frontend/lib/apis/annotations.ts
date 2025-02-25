@@ -1,4 +1,4 @@
-// lib/api/annotations.ts
+// lib/apis/annotations.ts
 import { fetchWithAuth } from "./config";
 import type {
   Annotation,
@@ -17,7 +17,7 @@ export async function getAnnotations(
 ): Promise<AnnotationState> {
   try {
     const response: AnnotationResponse = await fetchWithAuth(
-      `/annotations/${userId}/${projectId}/${imageId}`
+      `/projects/${projectId}/images/${imageId}/annotations`
     );
 
     if (!response.success || !response.data) {
@@ -47,7 +47,7 @@ export async function updateAnnotations(
 ): Promise<boolean> {
   try {
     const response = await fetchWithAuth(
-      `/annotations/${userId}/${projectId}/${imageId}`,
+      `/projects/${projectId}/images/${imageId}/annotations`,
       {
         method: "POST",
         body: JSON.stringify({
@@ -70,7 +70,6 @@ export async function updateAnnotations(
 
 /**
  * Get all annotation classes for a project
- * Handles both regular classes and numbered format (e.g., "Car - 01")
  */
 export async function getClasses(
   userId: string,
@@ -78,7 +77,7 @@ export async function getClasses(
 ): Promise<{ classes: string[]; isOfficeUser: boolean }> {
   try {
     const response: ClassesResponse = await fetchWithAuth(
-      `/annotations/${userId}/${projectId}/classes`
+      `/projects/${projectId}/classes`
     );
 
     if (!response.success || !response.data) {
@@ -105,5 +104,34 @@ export async function getClasses(
       classes: [],
       isOfficeUser: false,
     };
+  }
+}
+
+/**
+ * Review annotations (admin only)
+ */
+export async function reviewAnnotations(
+  projectId: string,
+  imageId: string,
+  status: "approved" | "changes_requested",
+  feedback?: string
+): Promise<boolean> {
+  try {
+    const response = await fetchWithAuth(
+      `/projects/${projectId}/images/${imageId}/review`,
+      {
+        method: "POST",
+        body: JSON.stringify({ status, feedback }),
+      }
+    );
+
+    if (!response.success) {
+      throw new Error(response.error || "Failed to review annotations");
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error reviewing annotations:", error);
+    return false;
   }
 }

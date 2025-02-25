@@ -62,11 +62,14 @@ export interface PhotoViewerProps {
   onSave: (annotations: Annotation[]) => Promise<void>;
   onNext: () => void;
   onPrevious: () => void;
-  onBack: () => void;  // Add this line
+  onBack: () => void;
   hasPrevious: boolean;
   hasNext: boolean;
   currentIndex: number;
   totalImages: number;
+  reviewMode?: boolean; // Add this new prop
+  isAdmin?: boolean; // Add this prop to indicate admin mode
+  projectId?: string; // Add this to the props
 }
 
 export interface AnnotationProps {

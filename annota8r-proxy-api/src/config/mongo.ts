@@ -3,6 +3,7 @@ import { MongoClient } from 'mongodb';
 import { env } from './env.js';
 import type { Admin, WebUser } from '../types/auth.types.js';
 import type { SecurityLog } from '../types/log.types.js';
+import type { ImageAssignment, Project } from '../types/project.types.js';
 
 const client = new MongoClient(env.MONGODB_URI);
 
@@ -20,3 +21,5 @@ export const db = client.db('annot8r');
 export const WebUsers = db.collection<WebUser>('web_users');
 export const Admins = db.collection<Admin>('admins');
 export const SecurityLogs = db.collection<SecurityLog>('security_logs');
+export const Projects = db.collection<Project>('projects');
+export const ImageAssignments = db.collection<ImageAssignment>('image_assignments');

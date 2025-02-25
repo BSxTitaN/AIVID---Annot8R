@@ -1,18 +1,10 @@
-import { useState } from 'react';
+// app/(admin)/components/users/AdminProjectStatus.tsx
+import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Check, Loader2, XCircle } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { fetchWithAuth } from '@/lib/apis/config';
-import { toast } from 'sonner';
+import { CheckCircle, Loader2, XCircle } from "lucide-react";
+import { unmarkProject } from "@/lib/apis/projects";
+import { format } from "date-fns";
 
 interface AdminProjectStatusProps {
   username: string;
@@ -23,84 +15,68 @@ interface AdminProjectStatusProps {
 }
 
 export function AdminProjectStatus({
-  username,
   projectId,
   isSubmitted,
   submittedAt,
-  onStatusChange
+  onStatusChange,
 }: AdminProjectStatusProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleUnmark = async () => {
     try {
-      setIsLoading(true);
-      await fetchWithAuth(`/auth/users/${username}/projects/${projectId}/unsubmit`, {
-        method: 'POST'
-      });
-      
-      toast.success('Project status updated');
+      setLoading(true);
+      await unmarkProject(projectId);
+      toast.success("Project unmarked successfully");
       onStatusChange();
     } catch {
-      toast.error('Failed to update project status');
+      toast.error("Failed to unmark project");
     } finally {
-      setIsLoading(false);
-      setIsOpen(false);
+      setLoading(false);
     }
   };
 
   if (!isSubmitted) {
     return (
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <XCircle className="h-4 w-4" />
-        Not submitted
+      <div className="flex items-center gap-2 p-4 bg-gray-50 rounded-lg">
+        <XCircle className="h-5 w-5 text-gray-500" />
+        <span className="text-gray-600">Project not submitted</span>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-green-600">
-        <Check className="h-4 w-4" />
-        Submitted {submittedAt && `on ${new Date(submittedAt).toLocaleDateString()}`}
+    <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
+      <div className="flex items-center gap-2">
+        <CheckCircle className="h-5 w-5 text-green-600" />
+        <div>
+          <span className="font-medium text-green-800">Project submitted</span>
+          {submittedAt && (
+            <span className="ml-2 text-sm text-green-600">
+              on {format(new Date(submittedAt), "PP")}
+            </span>
+          )}
+        </div>
       </div>
-      
+
       <Button
         variant="outline"
         size="sm"
-        onClick={() => setIsOpen(true)}
-        disabled={isLoading}
+        className="gap-2"
+        onClick={handleUnmark}
+        disabled={loading}
       >
-        Mark as Incomplete
+        {loading ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Unmarking...
+          </>
+        ) : (
+          <>
+            <XCircle className="h-4 w-4" />
+            Unmark Submission
+          </>
+        )}
       </Button>
-
-      <AlertDialog open={isOpen} onOpenChange={setIsOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Mark Project as Incomplete</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will mark the project as incomplete and notify the user that they need to review their annotations. Are you sure?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleUnmark}
-              disabled={isLoading}
-              className="gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                "Mark as Incomplete"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

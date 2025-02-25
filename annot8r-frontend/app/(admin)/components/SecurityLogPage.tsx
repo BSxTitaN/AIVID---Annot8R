@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { fetchWithAuth } from "@/lib/apis/config";
 import { SecurityLogType, SecurityLog } from "@/lib/types/logs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -38,7 +37,12 @@ import {
   ArrowUpDown,
   Info,
 } from "lucide-react";
-import { LastUpdated } from "./users/LastUpdated";
+import { LastUpdated } from "./LastUpdated";
+import {
+  getSecurityLogs,
+  LogsResponse,
+  SecurityLogFilters,
+} from "@/lib/apis/logs";
 
 type SortField = "userId" | "logType" | "timestamp" | "ip";
 type SortOrder = "asc" | "desc";
@@ -74,6 +78,8 @@ const LOG_TYPE_GROUPS: LogTypeGroup[] = [
       SecurityLogType.ADMIN_REVOKED,
       SecurityLogType.USER_DELETED,
       SecurityLogType.ADMIN_DELETED,
+      SecurityLogType.PROJECT_SUBMITTED,
+      SecurityLogType.PROJECT_UNMARKED,
       SecurityLogType.USER_UPDATED,
     ],
   },
@@ -166,22 +172,22 @@ export default function SecurityLogsPage() {
     async (showLoading = true) => {
       if (showLoading) setLoading(true);
       try {
-        const params = new URLSearchParams({
-          page: currentPage.toString(),
-          limit: "10",
-          sortField: sort.field,
-          sortOrder: sort.order,
-        });
+        const filters: SecurityLogFilters = {
+          page: currentPage,
+          limit: 10,
+        };
 
         if (searchQuery) {
-          params.append("userId", searchQuery);
+          filters.userId = searchQuery;
         }
 
         if (selectedLogType !== "all") {
-          params.append("logType", selectedLogType);
+          filters.logType = selectedLogType as SecurityLogType;
         }
 
-        const response = await fetchWithAuth(`/auth/logs?${params}`);
+        // Use the getSecurityLogs API function instead of direct fetchWithAuth
+        const response: LogsResponse = await getSecurityLogs(filters);
+
         setLogs(response.logs);
         setTotalPages(response.pagination.totalPages);
         setLastRefreshed(new Date());
@@ -192,7 +198,7 @@ export default function SecurityLogsPage() {
         if (showLoading) setLoading(false);
       }
     },
-    [currentPage, searchQuery, selectedLogType, sort]
+    [currentPage, searchQuery, selectedLogType]
   );
 
   useEffect(() => {
@@ -379,7 +385,7 @@ export default function SecurityLogsPage() {
           <CardTitle>Security Logs</CardTitle>
           <LastUpdated
             timestamp={lastRefreshed}
-            onRefresh={() => handleManualRefresh}
+            onRefresh={() => handleManualRefresh()}
           />
         </CardHeader>
         <CardContent>

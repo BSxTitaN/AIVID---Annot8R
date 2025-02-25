@@ -1,13 +1,14 @@
 // src/services/auth.service.ts
 
-import { WebUsers, Admins } from "../config/mongo.js";
+import { WebUsers, Admins, Projects } from "../config/mongo.js";
 import { CryptoService } from "./crypto.service.js";
 import { DeviceService } from "./device.service.js";
 import { ScrapingDetectionService } from "./scraping-detection.service.js";
 import { SecurityLogService } from "./log.service.js";
 import { SecurityLogType } from "../types/log.types.js";
 import { type AuthResponse, UserRole } from "../types/auth.types.js";
-import { S3Service } from "./s3.service.js";
+import { ObjectId } from "mongodb";
+import { ProjectService } from "./project.service.js";
 
 export class AuthService {
   static readonly TOKEN_EXPIRY = 30 * 60 * 1000; // 30 minutes
@@ -24,16 +25,16 @@ export class AuthService {
   ): Promise<boolean> {
     const existing = await WebUsers.findOne({ username });
     if (existing) return false;
-  
+
     const { hash: passwordHash, salt } = await CryptoService.hashPassword(
       password
     );
-  
+
     await WebUsers.insertOne({
       username,
       passwordHash,
       salt,
-      isOfficeUser,  // Add this field
+      isOfficeUser, // Add this field
       isLocked: false,
       lastLoginAttempt: new Date(),
       failedLoginAttempts: 0,
@@ -43,12 +44,12 @@ export class AuthService {
         resetAt: new Date(),
       },
     });
-  
+
     // Create default classes for office users
     // if (isOfficeUser) {
     //   await S3Service.createDefaultOfficeClasses(username);
     // }
-  
+
     return true;
   }
 
@@ -350,6 +351,58 @@ export class AuthService {
   }
 
   /**
+   * Verify token and device info
+   */
+  static async verifyToken(
+    token: string,
+    ip: string,
+    userAgent: string,
+    deviceInfo: Record<string, unknown>
+  ): Promise<{
+    valid: boolean;
+    role?: UserRole;
+    error?: string;
+  }> {
+    // Log for debugging
+    console.log("Verifying token prefix:", token.substring(0, 10) + "...");
+
+    // First check web users
+    const webUser = await WebUsers.findOne({ accessToken: token });
+    if (webUser) {
+      if (!webUser.tokenExpiry || new Date() > webUser.tokenExpiry) {
+        return { valid: false, error: "Token expired" };
+      }
+
+      // For web users, only verify device fingerprint if not a bot
+      if (!DeviceService.isKnownBot(userAgent)) {
+        const fingerprint = DeviceService.generateFingerprint(
+          userAgent,
+          "",
+          JSON.stringify(deviceInfo)
+        );
+
+        if (webUser.activeDevice?.fingerprint !== fingerprint) {
+          return { valid: false, error: "Device mismatch" };
+        }
+      }
+
+      return { valid: true, role: UserRole.USER };
+    }
+
+    // Then check admins - for admin users, don't do device fingerprint checks
+    const admin = await Admins.findOne({ accessToken: token });
+    if (admin) {
+      if (!admin.tokenExpiry || new Date() > admin.tokenExpiry) {
+        return { valid: false, error: "Token expired" };
+      }
+      return { valid: true, role: UserRole.ADMIN };
+    }
+
+    console.log("Token not found in either collection");
+    return { valid: false, error: "Invalid token" };
+  }
+
+  /**
    * Get user info from token
    */
   static async getUserInfo(token: string): Promise<{
@@ -382,7 +435,7 @@ export class AuthService {
         role: UserRole.ADMIN,
         isLocked: admin.isLocked,
         lockReason: admin.lockReason,
-        isSuperAdmin: admin.isSuperAdmin
+        isSuperAdmin: admin.isSuperAdmin,
       };
     }
 
@@ -826,17 +879,17 @@ export class AuthService {
     try {
       // Delete from MongoDB
       const result = await WebUsers.deleteOne({ username });
-      
+
       if (result.deletedCount === 0) {
         return false;
       }
-  
+
       // // Delete from S3 (all user data)
       // await S3Service.deleteUserData(username);
-      
+
       return true;
     } catch (error) {
-      console.error('Error deleting user:', error);
+      console.error("Error deleting user:", error);
       return false;
     }
   }
@@ -844,24 +897,136 @@ export class AuthService {
   /**
    * Delete Admin
    */
-  static async deleteAdmin(username: string, requestingAdminUsername: string): Promise<boolean> {
+  static async deleteAdmin(
+    username: string,
+    requestingAdminUsername: string
+  ): Promise<boolean> {
     try {
       // Check if attempting to delete super admin
       const targetAdmin = await Admins.findOne({ username });
       if (targetAdmin?.isSuperAdmin) {
         return false; // Cannot delete super admin
       }
-  
+
       // Check if attempting self-deletion
       if (username === requestingAdminUsername) {
         return false; // Cannot delete self
       }
-  
+
       const result = await Admins.deleteOne({ username });
       return result.deletedCount > 0;
     } catch (error) {
-      console.error('Error deleting admin:', error);
+      console.error("Error deleting admin:", error);
       return false;
     }
   }
+
+  /**
+   * Check if user has access to project
+   */
+  static async hasProjectAccess(
+    username: string,
+    projectId: string
+  ): Promise<boolean> {
+    const project = await Projects.findOne({
+      _id: new ObjectId(projectId) as unknown as string,
+      "members.userId": username,
+    });
+    return !!project;
+  }
+
+  /**
+   * Check if admin has project management rights
+   */
+  static async canManageProject(
+    adminUsername: string,
+    projectId: string
+  ): Promise<boolean> {
+    const admin = await Admins.findOne({ username: adminUsername });
+    // Super admins can manage all projects
+    if (admin?.isSuperAdmin) return true;
+
+    const project = await Projects.findOne({
+      _id: new ObjectId(projectId) as unknown as string,
+      createdBy: adminUsername,
+    });
+    return !!project;
+  }
+
+  /**
+   * Add project access for user
+   */
+  static async addProjectAccess(
+    username: string,
+    projectId: string,
+    allocationPercentage: number
+  ): Promise<boolean> {
+    const user = await WebUsers.findOne({ username });
+    if (!user) return false;
+
+    const result = await Projects.updateOne(
+      { _id: new ObjectId(projectId) as unknown as string },
+      {
+        $push: {
+          members: {
+            userId: username,
+            allocationPercentage,
+            assignedImages: [],
+            completedImages: [],
+            timeSpent: 0,
+            lastActivity: new Date(),
+          },
+        },
+      }
+    );
+
+    return result.modifiedCount > 0;
+  }
+
+  /**
+ * Get projects assigned to a user
+ */
+static async getUserProjects(username: string): Promise<any[]> {
+  try {
+    // Find all projects where the user is a member
+    const projects = await Projects.find({
+      "members.userId": username
+    }).toArray();
+    
+    if (!projects.length) return [];
+    
+    // Format the response for the frontend with submission status
+    const projectsWithSubmissionStatus = await Promise.all(
+      projects.map(async (project) => {
+        // Find the member data for this user
+        const memberData = project.members.find(m => m.userId === username);
+        
+        // Calculate completion percentage
+        const totalAssigned = memberData?.assignedImages.length || 0;
+        const totalCompleted = memberData?.completedImages.length || 0;
+        
+        // Get submission status
+        const { isSubmitted, submittedAt } = 
+          await ProjectService.getProjectSubmissionStatus(project._id.toString());
+        
+        return {
+          id: project._id.toString(),
+          name: project.name,
+          totalImages: totalAssigned,
+          annotatedImages: totalCompleted,
+          remainingImages: totalAssigned - totalCompleted,
+          allocationPercentage: memberData?.allocationPercentage || 0,
+          timeSpent: memberData?.timeSpent || 0,
+          isSubmitted,
+          submittedAt
+        };
+      })
+    );
+    
+    return projectsWithSubmissionStatus;
+  } catch (error) {
+    console.error('Error fetching user projects:', error);
+    return [];
+  }
+}
 }
