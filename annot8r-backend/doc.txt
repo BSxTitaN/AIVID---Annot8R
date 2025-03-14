@@ -1,0 +1,2473 @@
+openapi: 3.0.3
+info:
+  title: Annotation Platform API
+  description: |
+    API for a secure annotation platform that enables organizations to efficiently manage the annotation of proprietary image datasets.
+    
+    This platform supports a complete workflow from project creation to final export, with role-based access control and comprehensive activity tracking.
+  version: 1.0.0
+  contact:
+    name: API Support
+servers:
+  - url: 'http://localhost:3001/api/v1'
+    description: Local Development Server
+  - url: 'https://api.annotationplatform.com/api/v1'
+    description: Production Server
+
+tags:
+  - name: Authentication
+    description: Authentication and user session management
+  - name: Users
+    description: User management operations
+  - name: Admins
+    description: Admin user management operations
+  - name: Dashboard
+    description: Admin dashboard statistics and data
+  - name: Projects
+    description: Project management operations
+  - name: Images
+    description: Image upload and management
+  - name: Annotations
+    description: Image annotation operations
+  - name: Assignments
+    description: Image assignment operations
+  - name: Submissions
+    description: Submission and review operations
+  - name: Exports
+    description: Project export operations
+  - name: User Projects
+    description: User-specific project operations
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from the /auth/login endpoint
+  
+  schemas:
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: "Error message"
+    
+    Success:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Operation completed successfully"
+    
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          example: "johndoe"
+        password:
+          type: string
+          format: password
+          example: "password123"
+    
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            token:
+              type: string
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            user:
+              type: object
+              properties:
+                id:
+                  type: string
+                  example: "60a3c7e5e6f4de001fc4a3b7"
+                username:
+                  type: string
+                  example: "johndoe"
+                role:
+                  type: string
+                  enum: [USER, ADMIN, SUPER_ADMIN]
+                  example: "USER"
+                isOfficeUser:
+                  type: boolean
+                  example: false
+                firstName:
+                  type: string
+                  example: "John"
+                lastName:
+                  type: string
+                  example: "Doe"
+    
+    UserResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              example: "60a3c7e5e6f4de001fc4a3b7"
+            username:
+              type: string
+              example: "johndoe"
+            email:
+              type: string
+              format: email
+              example: "john.doe@example.com"
+            role:
+              type: string
+              enum: [USER, ADMIN, SUPER_ADMIN]
+              example: "USER"
+            isOfficeUser:
+              type: boolean
+              example: false
+            firstName:
+              type: string
+              example: "John"
+            lastName:
+              type: string
+              example: "Doe"
+            isActive:
+              type: boolean
+              example: true
+            createdAt:
+              type: string
+              format: date-time
+              example: "2023-01-15T12:00:00Z"
+            updatedAt:
+              type: string
+              format: date-time
+              example: "2023-01-15T12:00:00Z"
+            lastLoginAt:
+              type: string
+              format: date-time
+              example: "2023-01-15T12:00:00Z"
+    
+    CreateUserRequest:
+      type: object
+      required:
+        - username
+        - email
+        - password
+        - firstName
+        - lastName
+      properties:
+        username:
+          type: string
+          example: "johndoe"
+          minLength: 3
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        password:
+          type: string
+          format: password
+          example: "Password123!"
+          minLength: 8
+        firstName:
+          type: string
+          example: "John"
+          minLength: 1
+        lastName:
+          type: string
+          example: "Doe"
+          minLength: 1
+        isOfficeUser:
+          type: boolean
+          example: false
+    
+    UpdateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: "new.email@example.com"
+        firstName:
+          type: string
+          example: "Johnny"
+          minLength: 1
+        lastName:
+          type: string
+          example: "Doe"
+          minLength: 1
+        isOfficeUser:
+          type: boolean
+          example: true
+        isActive:
+          type: boolean
+          example: true
+    
+    CreateAdminRequest:
+      type: object
+      required:
+        - username
+        - email
+        - password
+        - firstName
+        - lastName
+      properties:
+        username:
+          type: string
+          example: "admin_user"
+          minLength: 3
+          maxLength: 50
+        email:
+          type: string
+          format: email
+          example: "admin@example.com"
+        password:
+          type: string
+          format: password
+          example: "AdminPassword123!"
+          minLength: 8
+        firstName:
+          type: string
+          example: "Admin"
+          minLength: 1
+        lastName:
+          type: string
+          example: "User"
+          minLength: 1
+    
+    ResetPasswordRequest:
+      type: object
+      required:
+        - newPassword
+      properties:
+        newPassword:
+          type: string
+          format: password
+          example: "NewPassword123!"
+          minLength: 8
+    
+    ProjectClass:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "60a3c7e5e6f4de001fc4a3b8"
+        name:
+          type: string
+          example: "Person"
+        color:
+          type: string
+          example: "#FF0000"
+        isCustom:
+          type: boolean
+          example: false
+    
+    CreateProjectRequest:
+      type: object
+      required:
+        - name
+        - description
+        - annotationFormat
+        - classes
+      properties:
+        name:
+          type: string
+          example: "Traffic Detection"
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+          example: "A project for annotating traffic images."
+          minLength: 1
+        annotationFormat:
+          type: string
+          enum: [YOLO]
+          example: "YOLO"
+        classes:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                example: "Car"
+                minLength: 1
+              color:
+                type: string
+                example: "#FF0000"
+                pattern: "^#[0-9A-Fa-f]{6}$"
+          minItems: 1
+        allowCustomClasses:
+          type: boolean
+          example: false
+    
+    ProjectResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              example: "60a3c7e5e6f4de001fc4a3b8"
+            name:
+              type: string
+              example: "Traffic Detection"
+            description:
+              type: string
+              example: "A project for annotating traffic images."
+            annotationFormat:
+              type: string
+              enum: [YOLO]
+              example: "YOLO"
+            classes:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProjectClass'
+            allowCustomClasses:
+              type: boolean
+              example: false
+            status:
+              type: string
+              enum: [CREATED, IN_PROGRESS, COMPLETED, ARCHIVED]
+              example: "CREATED"
+            totalImages:
+              type: integer
+              example: 150
+            annotatedImages:
+              type: integer
+              example: 75
+            reviewedImages:
+              type: integer
+              example: 30
+            approvedImages:
+              type: integer
+              example: 25
+            completionPercentage:
+              type: integer
+              example: 16
+            createdAt:
+              type: string
+              format: date-time
+              example: "2023-01-15T12:00:00Z"
+            updatedAt:
+              type: string
+              format: date-time
+              example: "2023-01-15T12:00:00Z"
+            createdBy:
+              type: string
+              example: "60a3c7e5e6f4de001fc4a3b7"
+    
+    UpdateProjectRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          example: "Updated project description."
+          minLength: 1
+        classes:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/ProjectClass'
+              - required:
+                - id
+                - name
+                - color
+                - isCustom
+        allowCustomClasses:
+          type: boolean
+          example: true
+        status:
+          type: string
+          enum: [CREATED, IN_PROGRESS, COMPLETED, ARCHIVED]
+          example: "IN_PROGRESS"
+    
+    AddProjectMemberRequest:
+      type: object
+      required:
+        - userId
+        - role
+      properties:
+        userId:
+          type: string
+          example: "60a3c7e5e6f4de001fc4a3b7"
+        role:
+          type: string
+          enum: [ANNOTATOR, REVIEWER]
+          example: "ANNOTATOR"
+    
+    ImageResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "60a3c7e5e6f4de001fc4a3b9"
+        filename:
+          type: string
+          example: "traffic_001.jpg"
+        width:
+          type: integer
+          example: 1920
+        height:
+          type: integer
+          example: 1080
+        status:
+          type: string
+          enum: [UPLOADED, ASSIGNED, ANNOTATED, UNDER_REVIEW, REVIEWED, APPROVED]
+          example: "UPLOADED"
+        annotationStatus:
+          type: string
+          enum: [UNANNOTATED, IN_PROGRESS, COMPLETED]
+          example: "UNANNOTATED"
+        reviewStatus:
+          type: string
+          enum: [NOT_REVIEWED, UNDER_REVIEW, FLAGGED, APPROVED]
+          example: "NOT_REVIEWED"
+        uploadedAt:
+          type: string
+          format: date-time
+          example: "2023-01-15T12:00:00Z"
+        assignedTo:
+          type: string
+          nullable: true
+          example: null
+        annotatedBy:
+          type: string
+          nullable: true
+          example: null
+        reviewedBy:
+          type: string
+          nullable: true
+          example: null
+        annotatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        autoAnnotated:
+          type: boolean
+          example: false
+        timeSpent:
+          type: integer
+          example: 0
+    
+    ManualAssignmentRequest:
+      type: object
+      required:
+        - userAssignments
+      properties:
+        userAssignments:
+          type: array
+          items:
+            type: object
+            required:
+              - userId
+              - count
+            properties:
+              userId:
+                type: string
+                example: "60a3c7e5e6f4de001fc4a3b7"
+              count:
+                type: integer
+                minimum: 1
+                example: 10
+          minItems: 1
+    
+    AssignmentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "60a3c7e5e6f4de001fc4a3ba"
+        userId:
+          type: string
+          example: "60a3c7e5e6f4de001fc4a3b7"
+        username:
+          type: string
+          example: "johndoe"
+        userFullName:
+          type: string
+          example: "John Doe"
+        status:
+          type: string
+          enum: [ASSIGNED, IN_PROGRESS, SUBMITTED, UNDER_REVIEW, NEEDS_REVISION, COMPLETED]
+          example: "ASSIGNED"
+        totalImages:
+          type: integer
+          example: 10
+        completedImages:
+          type: integer
+          example: 0
+        progress:
+          type: integer
+          example: 0
+        assignedAt:
+          type: string
+          format: date-time
+          example: "2023-01-15T12:00:00Z"
+        lastActivity:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2023-01-15T12:00:00Z"
+    
+    YoloObject:
+      type: object
+      properties:
+        x:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          example: 0.5
+          description: "Center x-coordinate (normalized 0-1)"
+        y:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          example: 0.5
+          description: "Center y-coordinate (normalized 0-1)"
+        width:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          example: 0.1
+          description: "Width (normalized 0-1)"
+        height:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          example: 0.2
+          description: "Height (normalized 0-1)"
+    
+    SaveAnnotationRequest:
+      type: object
+      required:
+        - objects
+        - classIds
+        - classNames
+        - timeSpent
+        - autoAnnotated
+      properties:
+        objects:
+          type: array
+          items:
+            $ref: '#/components/schemas/YoloObject'
+        classIds:
+          type: array
+          items:
+            type: string
+            example: "60a3c7e5e6f4de001fc4a3b8"
+        classNames:
+          type: array
+          items:
+            type: string
+            example: "Car"
+        timeSpent:
+          type: integer
+          minimum: 0
+          example: 120
+          description: "Time spent in seconds"
+        autoAnnotated:
+          type: boolean
+          example: false
+    
+    AutosaveAnnotationRequest:
+      type: object
+      required:
+        - objects
+        - classIds
+        - classNames
+        - timeSpent
+      properties:
+        objects:
+          type: array
+          items:
+            $ref: '#/components/schemas/YoloObject'
+        classIds:
+          type: array
+          items:
+            type: string
+            example: "60a3c7e5e6f4de001fc4a3b8"
+        classNames:
+          type: array
+          items:
+            type: string
+            example: "Car"
+        timeSpent:
+          type: integer
+          minimum: 0
+          example: 30
+          description: "Time spent in seconds"
+    
+    AnnotationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              example: "60a3c7e5e6f4de001fc4a3bb"
+            version:
+              type: integer
+              example: 1
+            objects:
+              type: array
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/YoloObject'
+                  - type: object
+                    properties:
+                      classId:
+                        type: string
+                        example: "60a3c7e5e6f4de001fc4a3b8"
+                      className:
+                        type: string
+                        example: "Car"
+            timeSpent:
+              type: integer
+              example: 120
+            autoAnnotated:
+              type: boolean
+              example: false
+            updatedAt:
+              type: string
+              format: date-time
+              example: "2023-01-15T12:00:00Z"
+    
+    SubmitForReviewRequest:
+      type: object
+      required:
+        - assignmentId
+      properties:
+        assignmentId:
+          type: string
+          example: "60a3c7e5e6f4de001fc4a3ba"
+        notes:
+          type: string
+          example: "Completed all annotations."
+    
+    ReviewSubmissionRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [APPROVED, REJECTED, UNDER_REVIEW]
+          example: "APPROVED"
+        feedback:
+          type: string
+          example: "Good work, all annotations look correct."
+        flaggedImages:
+          type: array
+          items:
+            type: object
+            required:
+              - imageId
+              - reason
+            properties:
+              imageId:
+                type: string
+                example: "60a3c7e5e6f4de001fc4a3b9"
+              reason:
+                type: string
+                example: "Bounding box is too small."
+    
+    SubmissionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "60a3c7e5e6f4de001fc4a3bc"
+        assignmentId:
+          type: string
+          example: "60a3c7e5e6f4de001fc4a3ba"
+        status:
+          type: string
+          enum: [SUBMITTED, UNDER_REVIEW, REJECTED, APPROVED]
+          example: "SUBMITTED"
+        submittedAt:
+          type: string
+          format: date-time
+          example: "2023-01-15T12:00:00Z"
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        submittedBy:
+          type: object
+          properties:
+            id:
+              type: string
+              example: "60a3c7e5e6f4de001fc4a3b7"
+            username:
+              type: string
+              example: "johndoe"
+            name:
+              type: string
+              example: "John Doe"
+        imageCount:
+          type: integer
+          example: 10
+        flaggedImagesCount:
+          type: integer
+          example: 0
+    
+    CreateExportRequest:
+      type: object
+      required:
+        - format
+        - includesImages
+        - onlyReviewedAnnotations
+      properties:
+        format:
+          type: string
+          enum: [YOLO]
+          example: "YOLO"
+        includesImages:
+          type: boolean
+          example: true
+        onlyReviewedAnnotations:
+          type: boolean
+          example: false
+    
+    ExportResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "60a3c7e5e6f4de001fc4a3bd"
+        format:
+          type: string
+          enum: [YOLO]
+          example: "YOLO"
+        status:
+          type: string
+          enum: [PENDING, PROCESSING, COMPLETED, FAILED]
+          example: "PENDING"
+        includesImages:
+          type: boolean
+          example: true
+        onlyReviewedAnnotations:
+          type: boolean
+          example: false
+        totalImages:
+          type: integer
+          example: 100
+        totalAnnotations:
+          type: integer
+          example: 250
+        exportedAt:
+          type: string
+          format: date-time
+          example: "2023-01-15T12:00:00Z"
+        exportedBy:
+          type: object
+          properties:
+            id:
+              type: string
+              example: "60a3c7e5e6f4de001fc4a3b7"
+            username:
+              type: string
+              example: "johndoe"
+            name:
+              type: string
+              example: "John Doe"
+        url:
+          type: string
+          nullable: true
+          example: "https://s3.example.com/exports/project_60a3c7e5e6f4de001fc4a3b8_export.zip"
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2023-01-16T12:00:00Z"
+    
+    DashboardStatsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            projects:
+              type: object
+              properties:
+                total:
+                  type: integer
+                  example: 10
+                completed:
+                  type: integer
+                  example: 3
+                completionRate:
+                  type: number
+                  format: float
+                  example: 30.0
+            users:
+              type: object
+              properties:
+                total:
+                  type: integer
+                  example: 25
+            images:
+              type: object
+              properties:
+                total:
+                  type: integer
+                  example: 1500
+                annotated:
+                  type: integer
+                  example: 750
+                reviewed:
+                  type: integer
+                  example: 500
+                annotationCompletionRate:
+                  type: number
+                  format: float
+                  example: 50.0
+                reviewCompletionRate:
+                  type: number
+                  format: float
+                  example: 66.7
+            annotations:
+              type: object
+              properties:
+                total:
+                  type: integer
+                  example: 3000
+    
+    PaginationParams:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+          example: 1
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+          example: 20
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and get JWT token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: User logout
+      description: Invalidate current session token
+      responses:
+        '200':
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user profile
+      description: Get details of the currently authenticated user
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /users:
+    get:
+      tags:
+        - Users
+      summary: List regular users
+      description: Get a paginated list of regular users (admin access)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Items per page
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      users:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            username:
+                              type: string
+                            email:
+                              type: string
+                            role:
+                              type: string
+                            isOfficeUser:
+                              type: boolean
+                            firstName:
+                              type: string
+                            lastName:
+                              type: string
+                            isActive:
+                              type: boolean
+                            createdAt:
+                              type: string
+                              format: date-time
+                            lastLoginAt:
+                              type: string
+                              format: date-time
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+    
+    post:
+      tags:
+        - Users
+      summary: Create new user
+      description: Create a new regular user (admin access)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+  
+  /users/{userId}:
+    get:
+      tags:
+        - Users
+      summary: Get user details
+      description: Get details of a specific user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+    
+    patch:
+      tags:
+        - Users
+      summary: Update user details
+      description: Update details of a specific user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+    
+    delete:
+      tags:
+        - Users
+      summary: Delete a user
+      description: Delete a specific user (admin access)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+  
+  /users/{userId}/reset-password:
+    post:
+      tags:
+        - Users
+      summary: Reset user password
+      description: Reset password for a specific user (admin access)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+  
+  /admins:
+    get:
+      tags:
+        - Admins
+      summary: List admin users
+      description: Get a paginated list of admin users (super admin access)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Items per page
+      responses:
+        '200':
+          description: List of admins
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      admins:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            username:
+                              type: string
+                            email:
+                              type: string
+                            firstName:
+                              type: string
+                            lastName:
+                              type: string
+                            isActive:
+                              type: boolean
+                            createdAt:
+                              type: string
+                              format: date-time
+                            lastLoginAt:
+                              type: string
+                              format: date-time
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+    
+    post:
+      tags:
+        - Admins
+      summary: Create new admin
+      description: Create a new admin user (super admin access)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAdminRequest'
+      responses:
+        '201':
+          description: Admin created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      username:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                      firstName:
+                        type: string
+                      lastName:
+                        type: string
+                      createdAt:
+                        type: string
+                        format: date-time
+                  message:
+                    type: string
+                    example: "Admin created successfully"
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+  
+  /admin/dashboard/stats:
+    get:
+      tags:
+        - Dashboard
+      summary: Get admin dashboard statistics
+      description: Get overall platform statistics (admin access)
+      responses:
+        '200':
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStatsResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+  
+  /admin/dashboard/projects/recent:
+    get:
+      tags:
+        - Dashboard
+      summary: Get recent projects
+      description: Get list of recently updated projects (admin access)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 5
+          description: Number of projects to return
+      responses:
+        '200':
+          description: Recent projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        status:
+                          type: string
+                        totalImages:
+                          type: integer
+                        completionPercentage:
+                          type: integer
+                        createdAt:
+                          type: string
+                          format: date-time
+                        updatedAt:
+                          type: string
+                          format: date-time
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+  
+  /projects:
+    get:
+      tags:
+        - Projects
+      summary: List all projects
+      description: Get a paginated list of all projects (admin view)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Items per page
+      responses:
+        '200':
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      projects:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            description:
+                              type: string
+                            status:
+                              type: string
+                            totalImages:
+                              type: integer
+                            annotatedImages:
+                              type: integer
+                            reviewedImages:
+                              type: integer
+                            approvedImages:
+                              type: integer
+                            completionPercentage:
+                              type: integer
+                            createdAt:
+                              type: string
+                              format: date-time
+                            updatedAt:
+                              type: string
+                              format: date-time
+                            createdBy:
+                              type: string
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+    
+    post:
+      tags:
+        - Projects
+      summary: Create new project
+      description: Create a new annotation project (admin access)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+  
+  /projects/{projectId}:
+    get:
+      tags:
+        - Projects
+      summary: Get project details
+      description: Get details of a specific project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+    
+    patch:
+      tags:
+        - Projects
+      summary: Update project
+      description: Update details of a specific project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        '200':
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+    
+    delete:
+      tags:
+        - Projects
+      summary: Delete project
+      description: Delete a specific project (super admin access)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Project deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+  
+  /projects/{projectId}/images/upload:
+    post:
+      tags:
+        - Images
+      summary: Upload images
+      description: Upload images to a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+              required:
+                - file
+      responses:
+        '201':
+          description: Images uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        filename:
+                          type: string
+                        width:
+                          type: integer
+                        height:
+                          type: integer
+                        uploadedAt:
+                          type: string
+                          format: date-time
+                  message:
+                    type: string
+                    example: "Images uploaded successfully"
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+  
+  /projects/{projectId}/images:
+    get:
+      tags:
+        - Images
+      summary: List project images
+      description: Get a paginated list of images in a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Items per page
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [UPLOADED, ASSIGNED, ANNOTATED, UNDER_REVIEW, REVIEWED, APPROVED]
+          description: Filter by image status
+        - name: annotationStatus
+          in: query
+          schema:
+            type: string
+            enum: [UNANNOTATED, IN_PROGRESS, COMPLETED]
+          description: Filter by annotation status
+        - name: reviewStatus
+          in: query
+          schema:
+            type: string
+            enum: [NOT_REVIEWED, UNDER_REVIEW, FLAGGED, APPROVED]
+          description: Filter by review status
+        - name: assignedTo
+          in: query
+          schema:
+            type: string
+          description: Filter by assigned user ID
+      responses:
+        '200':
+          description: List of images
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      images:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ImageResponse'
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+  
+  /projects/{projectId}/assignments:
+    post:
+      tags:
+        - Assignments
+      summary: Manual assignment
+      description: Manually assign images to users
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManualAssignmentRequest'
+      responses:
+        '200':
+          description: Images assigned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+    
+    get:
+      tags:
+        - Assignments
+      summary: List assignments
+      description: Get a paginated list of assignments for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Items per page
+      responses:
+        '200':
+          description: List of assignments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      assignments:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AssignmentResponse'
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+  
+  /projects/{projectId}/assignments/smart:
+    post:
+      tags:
+        - Assignments
+      summary: Smart distribution
+      description: Automatically distribute images to all annotators
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Images distributed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+  
+  /user/projects/{projectId}/images/{imageId}/annotations:
+    post:
+      tags:
+        - Annotations
+      summary: Create/update annotations
+      description: Create or update annotations for an image
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveAnnotationRequest'
+      responses:
+        '200':
+          description: Annotation saved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnotationResponse'
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Image not found
+    
+    get:
+      tags:
+        - Annotations
+      summary: Get annotations
+      description: Get annotations for an image
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Annotation details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnotationResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Image not found
+  
+  /user/projects/{projectId}/images/{imageId}/annotations/autosave:
+    patch:
+      tags:
+        - Annotations
+      summary: Autosave annotations
+      description: Save work in progress annotations
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutosaveAnnotationRequest'
+      responses:
+        '200':
+          description: Annotation auto-saved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Image not found
+  
+  /projects/{projectId}/images/{imageId}/auto-annotate:
+    post:
+      tags:
+        - Annotations
+      summary: Auto-annotate
+      description: Apply auto-annotation (office users only)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                objects:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/YoloObject'
+                classIds:
+                  type: array
+                  items:
+                    type: string
+                classNames:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Auto-annotation applied successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      objects:
+                        type: array
+                        items:
+                          type: object
+                      autoAnnotated:
+                        type: boolean
+                        example: true
+                  message:
+                    type: string
+                    example: "Auto-annotation applied successfully"
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - Requires office user privileges
+        '404':
+          description: Image not found
+  
+  /user/projects/{projectId}/assignments/{assignmentId}/submit:
+    post:
+      tags:
+        - Submissions
+      summary: Submit for review
+      description: Submit assignment for review
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+                  example: "I've completed all annotations as requested."
+      responses:
+        '201':
+          description: Submission created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      status:
+                        type: string
+                        enum: [SUBMITTED, UNDER_REVIEW, REJECTED, APPROVED]
+                        example: "SUBMITTED"
+                      submittedAt:
+                        type: string
+                        format: date-time
+                      imageCount:
+                        type: integer
+                        example: 10
+                  message:
+                    type: string
+                    example: "Submission created successfully"
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Assignment not found
+  
+  /projects/{projectId}/submissions:
+    get:
+      tags:
+        - Submissions
+      summary: List submissions
+      description: Get a paginated list of submissions for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Items per page
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [SUBMITTED, UNDER_REVIEW, REJECTED, APPROVED]
+          description: Filter by submission status
+      responses:
+        '200':
+          description: List of submissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      submissions:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SubmissionResponse'
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+  
+  /projects/{projectId}/submissions/{submissionId}/review:
+    post:
+      tags:
+        - Submissions
+      summary: Review submission
+      description: Review a submission
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewSubmissionRequest'
+      responses:
+        '200':
+          description: Submission reviewed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      status:
+                        type: string
+                        enum: [SUBMITTED, UNDER_REVIEW, REJECTED, APPROVED]
+                        example: "APPROVED"
+                      reviewedAt:
+                        type: string
+                        format: date-time
+                      flaggedImagesCount:
+                        type: integer
+                        example: 0
+                  message:
+                    type: string
+                    example: "Submission reviewed successfully"
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Submission not found
+  
+  /projects/{projectId}/exports:
+    post:
+      tags:
+        - Exports
+      summary: Create export
+      description: Create a new export job
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExportRequest'
+      responses:
+        '201':
+          description: Export job created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      format:
+                        type: string
+                        enum: [YOLO]
+                        example: "YOLO"
+                      includesImages:
+                        type: boolean
+                        example: true
+                      onlyReviewedAnnotations:
+                        type: boolean
+                        example: false
+                      status:
+                        type: string
+                        enum: [PENDING, PROCESSING, COMPLETED, FAILED]
+                        example: "PENDING"
+                      exportedAt:
+                        type: string
+                        format: date-time
+                  message:
+                    type: string
+                    example: "Export job created successfully"
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+    
+    get:
+      tags:
+        - Exports
+      summary: Get project exports
+      description: Get a paginated list of exports for a project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Items per page
+      responses:
+        '200':
+          description: List of exports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      exports:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ExportResponse'
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found
+  
+  /projects/{projectId}/exports/{exportId}/download:
+    get:
+      tags:
+        - Exports
+      summary: Download export
+      description: Get download URL for an export
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: exportId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Export download URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        example: "https://s3.example.com/exports/project_export.zip"
+        '400':
+          description: Export not ready
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Export not found
+  
+  /user/projects:
+    get:
+      tags:
+        - User Projects
+      summary: List assigned projects
+      description: Get a paginated list of projects assigned to the current user
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Items per page
+      responses:
+        '200':
+          description: List of assigned projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      projects:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            description:
+                              type: string
+                            status:
+                              type: string
+                            totalImages:
+                              type: integer
+                            annotatedImages:
+                              type: integer
+                            reviewedImages:
+                              type: integer
+                            approvedImages:
+                              type: integer
+                            completionPercentage:
+                              type: integer
+                            createdAt:
+                              type: string
+                              format: date-time
+                            updatedAt:
+                              type: string
+                              format: date-time
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '401':
+          description: Unauthorized
+  
+  /user/projects/{projectId}/images:
+    get:
+      tags:
+        - User Projects
+      summary: Get assigned images
+      description: Get a paginated list of images assigned to the current user
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Items per page
+      responses:
+        '200':
+          description: List of assigned images
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      images:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ImageResponse'
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+        '404':
+          description: Project not found

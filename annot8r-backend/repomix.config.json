@@ -1,0 +1,36 @@
+{
+  "output": {
+    "filePath": "repomix-output.txt",
+    "style": "plain",
+    "parsableStyle": true,
+    "compress": false,
+    "fileSummary": false,
+    "directoryStructure": true,
+    "removeComments": false,
+    "removeEmptyLines": true,
+    "showLineNumbers": false,
+    "copyToClipboard": false,
+    "includeEmptyDirectories": false
+  },
+  "include": ["**/*"],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "tmp/",
+      "*.log",
+      "tsconfig.json",
+      "bun.lockb",
+      "README.md",
+      "*.svg",
+      "repomix.config.json",
+      "package.json",
+      "doc.txt",
+      "scripts/create-super-admin.js",
+      ".gitignore"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  }
+}
